@@ -2,18 +2,22 @@ import os
 import zipfile
 
 
-def find_class_in_jars(directory, class_name):
+def find_class_in_jars(directory, class_prefix):
     """
-    在指定目录及其子目录下查找所有包含指定类的 JAR 文件。
+    查找所有包含指定类名前缀的 .class 文件（支持包名或类名前缀匹配）
 
-    :param directory: 要搜索的根目录
-    :param class_name: 类名，如 com.example.MyClass
+    :param directory: 要扫描的目录
+    :param class_prefix: 类名或包名前缀（如 com.example. 或 com.example.MyClass）
     """
-    if not class_name.endswith(".class"):
-        class_name = class_name.replace(".", "/") + ".class"
+    if not class_prefix:
+        print("[-] Class name prefix cannot be empty.")
+        return
 
-    print(f"[+] Searching for class: {class_name}")
-    found = False
+    # 将类名转换为 JAR 中的路径格式（例如 com.example. → com/example/）
+    class_prefix_path = class_prefix.replace('.', '/')
+
+    print(f"[+] Searching for class prefix: {class_prefix_path}")
+    found = []
 
     for root, _, files in os.walk(directory):
         for file in files:
@@ -21,14 +25,17 @@ def find_class_in_jars(directory, class_name):
                 jar_path = os.path.join(root, file)
                 try:
                     with zipfile.ZipFile(jar_path, 'r') as jar:
-                        if class_name in jar.namelist():
-                            print(f"[✓] Found in: {jar_path} → {class_name}")
-                            found = True
+                        for entry in jar.namelist():
+                            if entry.endswith(".class") and entry.startswith(class_prefix_path):
+                                print(f"[✓] Found in: {jar_path} → {entry}")
+                                found.append((jar_path, entry))
                 except zipfile.BadZipFile:
                     print(f"[!] Skipping corrupted jar: {jar_path}")
 
     if not found:
-        print("[-] Class not found in any JAR.")
+        print("[-] No matching class found.")
+    else:
+        print(f"[+] Total {len(found)} match(es) found.")
 
 
 def find_field_in_jars(directory, keyword):
@@ -71,6 +78,9 @@ def find_field_in_jars(directory, keyword):
 #
 # 1. 查找类是否存在
 # python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" "com.bytedance.helios.statichook.api.HeliosApiHook"
+#
+# 支持模糊查找
+# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" "com.bytedance.ttnet."
 #
 # 2. 查找类字节码中是否包含指定字段（如 VERSION_NAME）
 # python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" VERSION_NAME --mode field

@@ -74,10 +74,73 @@ def find_field_in_jars(directory, keyword):
     return found
 
 
+def find_class_and_content_in_jars(directory, keyword):
+    """
+    在指定目录下所有 JAR 中搜索：
+    1. 类路径中包含关键字的类名
+    2. 类的字节码中包含关键字内容
+
+    :param directory: 要搜索的目录
+    :param keyword: 要查找的关键字（支持类名路径或内容关键字）
+    """
+    if not keyword:
+        print("[-] 关键词不能为空")
+        return
+
+    print(f"[+] Searching for class path or class bytecode containing: {keyword}")
+
+    keyword_bin = keyword.encode()  # 转为二进制用于内容匹配
+    matched_entries = []
+    matched_jars = set()
+
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".jar"):
+                jar_path = os.path.join(root, file)
+                try:
+                    with zipfile.ZipFile(jar_path, 'r') as jar:
+                        for entry in jar.namelist():
+                            if not entry.endswith(".class"):
+                                continue
+
+                            matched = False
+
+                            # ① 类名路径中包含关键字
+                            if keyword in entry:
+                                print(f"[✓] Keyword in class name: {entry} ({jar_path})")
+                                matched = True
+
+                            # ② 字节码中包含关键字（如字符串常量）
+                            try:
+                                with jar.open(entry) as class_file:
+                                    content = class_file.read()
+                                    if keyword_bin in content:
+                                        print(f"[✓] Keyword in class bytecode: {entry} ({jar_path})")
+                                        matched = True
+                            except Exception as e:
+                                print(f"[!] Failed reading {entry} in {jar_path}: {e}")
+
+                            if matched:
+                                matched_entries.append((jar_path, entry))
+                                matched_jars.add(jar_path)
+
+                except zipfile.BadZipFile:
+                    print(f"[!] Skipping corrupted jar: {jar_path}")
+
+    if not matched_entries:
+        print(f"[-] No match found for keyword '{keyword}'")
+    else:
+        print(f"\n[+] Total {len(matched_entries)} match(es) found.")
+        print(f"[+] Matched JAR count: {len(matched_jars)}")
+        print("[+] Matched JAR files:")
+        for jar_file in sorted(matched_jars):
+            print(f"    - {jar_file}")
+
+
 # 示例用法：
 #
 # 1. 查找类是否存在
-# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" "com.bytedance.helios.statichook.api.HeliosApiHook"
+# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" "com.bytedance.retrofit2.SsResponse"
 #
 # 支持模糊查找
 # python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" "com.bytedance.ttnet."
@@ -85,17 +148,23 @@ def find_field_in_jars(directory, keyword):
 # 2. 查找类字节码中是否包含指定字段（如 VERSION_NAME）
 # python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" VERSION_NAME --mode field
 #
+# 3. 同时查找类路径和字节码是否包含关键词
+# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" SsResponse --mode all
+#
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Search class or field in JAR files.")
+    parser = argparse.ArgumentParser(description="Search for class name or class content keyword in JAR files.")
     parser.add_argument("directory", help="Directory to search")
-    parser.add_argument("keyword", help="Class name (dot style) or field keyword")
-    parser.add_argument("--mode", choices=["class", "field"], default="class",
-                        help="Search mode: 'class' for class name, 'field' for string in .class files")
+    parser.add_argument("keyword", help="Class prefix or bytecode keyword")
+    parser.add_argument("--mode", choices=["class", "field", "all"], default="class",
+                        help="Search mode: 'class' (class path), 'field' (bytecode), 'all' (both)")
+
     args = parser.parse_args()
 
     if args.mode == "class":
         find_class_in_jars(args.directory, args.keyword)
-    else:
+    elif args.mode == "field":
         find_field_in_jars(args.directory, args.keyword)
+    elif args.mode == "all":
+        find_class_and_content_in_jars(args.directory, args.keyword)

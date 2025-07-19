@@ -1,5 +1,7 @@
 import os
+import re
 import zipfile
+from typing import List
 
 
 def find_class_in_jars(directory, class_prefix):
@@ -74,6 +76,28 @@ def find_field_in_jars(directory, keyword):
     return found
 
 
+def sort_jar_paths(jar_paths: List[str]) -> List[str]:
+    """
+    对包含 base.apk、base.apk_classesN.jar 的路径列表进行排序，确保 _classes2 排在 _classes10 前面。
+
+    :param jar_paths: 未排序的 jar 文件路径列表
+    :return: 排序后的 jar 文件路径列表
+    """
+
+    def extract_index(path: str) -> int:
+        """
+        提取路径中 _classesN 的 N 数字部分用于排序。
+        如果是 base.apk.jar 则返回 0，表示优先排序。
+        """
+        match = re.search(r'_classes(\d+)\.jar$', path)
+        if match:
+            return int(match.group(1))  # 提取 _classesN 中的 N
+        return 0  # base.apk.jar 没有 _classesN，默认最小值
+
+    # 按照提取出的数字索引进行排序
+    return sorted(jar_paths, key=extract_index)
+
+
 def find_class_and_content_in_jars(directory, keyword):
     """
     在指定目录下所有 JAR 中搜索：
@@ -90,6 +114,8 @@ def find_class_and_content_in_jars(directory, keyword):
     print(f"[+] Searching for class path or class bytecode containing: {keyword}")
 
     keyword_bin = keyword.encode()  # 转为二进制用于内容匹配
+    keyword_path = keyword.replace('.', '/')
+
     matched_entries = []
     matched_jars = set()
 
@@ -106,7 +132,7 @@ def find_class_and_content_in_jars(directory, keyword):
                             matched = False
 
                             # ① 类名路径中包含关键字
-                            if keyword in entry:
+                            if keyword_path in entry:
                                 print(f"[✓] Keyword in class name: {entry} ({jar_path})")
                                 matched = True
 
@@ -133,7 +159,7 @@ def find_class_and_content_in_jars(directory, keyword):
         print(f"\n[+] Total {len(matched_entries)} match(es) found.")
         print(f"[+] Matched JAR count: {len(matched_jars)}")
         print("[+] Matched JAR files:")
-        for jar_file in sorted(matched_jars):
+        for jar_file in sort_jar_paths(matched_jars):
             print(f"    - {jar_file}")
 
 
@@ -149,7 +175,7 @@ def find_class_and_content_in_jars(directory, keyword):
 # python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" VERSION_NAME --mode field
 #
 # 3. 同时查找类路径和字节码是否包含关键词
-# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" SsResponse --mode all
+# python find_in_jars.py "D:\Python\anti-app\app\douyin\dump_dex\jar" com.bytedance.retrofit2.Retrofit --mode all
 #
 if __name__ == "__main__":
     import argparse
